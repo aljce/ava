@@ -2,7 +2,8 @@
 let
   overrides = nixpkgs.haskell.packages.ghc821.override {
     overrides = self: super: {
-      singletons = self.callPackage ./nix/singletons.nix {};
+      th-desugar = self.callPackage ./nix/th-desugar.nix {};
+      singletons = nixpkgs.haskell.lib.dontCheck (self.callPackage ./nix/singletons.nix {});
       ava = self.callCabal2nix "ava" ./. {};
     };
   };

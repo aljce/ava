@@ -13,7 +13,9 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.Ava
-  build-depends:       base >=4.9 && <4.10
+                     , Data.Nat
+                     , Data.Fin
+  build-depends:       base >=4.9 && <5
                      , flow == 1.0.*
                      , text == 1.2.*
                      , lens == 4.15.*

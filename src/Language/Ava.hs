@@ -10,9 +10,9 @@ import Flow ()
 import Control.Lens.TH (makeLenses,makePrisms)
 import qualified Data.Text as T
 import Data.Singletons ()
-import Data.Singletons.TypeLits (Nat)
 
-import Language.Ava.Fin (Fin)
+import Data.Nat (Nat(..))
+import Data.Fin (Fin)
 
 newtype Name
   = Name { _getName :: T.Text }
@@ -41,7 +41,7 @@ data AST :: Nat -> Type -> Type -> Type -> Kind -> Type where
   Universe :: u -> AST n v u c Term
   Constant :: c -> AST n v u c Term
   Embed    :: AST n v u c Elim -> AST n v u c Term
-  Pi       :: Named n v -> AST n v u c Term -> AST () v u c Term -> AST v u c Term
+  Pi       :: Named n v -> AST n v u c Term -> AST (Succ n) v u c Term -> AST n v u c Term
   -- Lam      :: Named v -> AST v u c Term -> AST v u c Term
   -- Ref      :: Named v -> AST v u c Elim
   -- (:::)    :: AST v u c Term -> AST v u c Term -> AST v u c Elim

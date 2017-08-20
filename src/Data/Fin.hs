@@ -4,13 +4,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
-module Language.Ava.Fin (Fin, elimFin) where
+{-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
+module Data.Fin (Fin, elimFin) where
 
 import Data.Kind (Type)
 
 import Data.Singletons (Sing)
-import Data.Singletons.Prelude (PNum((:+)))
-import Data.Singletons.TypeLits (Nat)
+import Data.Nat (Nat(..))
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -28,8 +28,8 @@ instance Show (Fin n) where
 
 elimFin
   :: forall p n
-  .  (forall m. p (1 :+ m))
-  -> (forall m. Fin m -> p m -> p (1 :+ m))
+  .  (forall m. p (Succ m))
+  -> (forall m. Fin m -> p m -> p (Succ m))
   -> Fin n
   -> p n
 elimFin z s (Fin n f) = go f
