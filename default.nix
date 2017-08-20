@@ -1,8 +1,9 @@
 { nixpkgs ? (import <nixpkgs> {}) }:
 let
-  overrides = nixpkgs.haskellPackages.override {
-    overrides = self: super: with self; with nixpkgs.haskell.lib; {
-      ava = callCabal2nix "ava" ./. {};
+  overrides = nixpkgs.haskell.packages.ghc821.override {
+    overrides = self: super: {
+      singletons = self.callPackage ./nix/singletons.nix {};
+      ava = self.callCabal2nix "ava" ./. {};
     };
   };
   drv = overrides.ava;
