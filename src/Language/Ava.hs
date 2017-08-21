@@ -14,7 +14,6 @@ import Flow ((.>))
 import Control.Lens.TH (makeLenses,makePrisms)
 import qualified Data.Text as T
 import Data.Singletons ()
-import Data.HFunctor.Foldable (HFunctor(..),Recursive(..),Base)
 
 import Data.Nat (Nat(..))
 import Data.Fin (Fin,fzero,fsucc)
@@ -54,40 +53,6 @@ data AST :: Nat -> Type -> Type -> Type -> Kind -> Type where
   Ref      :: Named (Fin n) v -> AST n v u c Elim
   (:::)    :: AST n v u c Term -> AST n v u c Term -> AST n v u c Elim
   (:@:)    :: AST n v u c Elim -> AST n v u c Term -> AST n v u c Elim
-
-data ASTF v u c f (k :: Kind) where
-  UniverseF :: u                           -> ASTF v u c f Term
-  ConstantF :: c                           -> ASTF v u c f Term
-  EmbedF    :: f Elim                      -> ASTF v u c f Term
-  PiF       :: Named v -> f Term -> f Term -> ASTF v u c f Term
-  LamF      :: Named v -> f Term           -> ASTF v u c f Term
-  RefF      :: Named v                     -> ASTF v u c f Elim
-  (:.:.:)   :: f Term  -> f Term           -> ASTF v u c f Elim
-  (:.@.:)   :: f Elim  -> f Term           -> ASTF v u c f Elim
-
-deriving instance (Show v, Show u, Show c, Show (f Term), Show (f Elim)) => Show (ASTF v u c f k)
-
-instance HFunctor (ASTF v u c) where
-  hfmap eta = (\case UniverseF u  -> UniverseF u
-                     ConstantF c  -> ConstantF c
-                     EmbedF e     -> EmbedF (eta e)
-                     PiF v vT bT  -> PiF v (eta vT) (eta bT)
-                     LamF v b     -> LamF v (eta b)
-                     RefF v       -> RefF v
-                     tm :.:.: ty  -> eta tm :.:.: eta ty
-                     el :.@.: tm  -> eta el :.@.: eta tm)
-
-type instance Base (AST v u c) = ASTF v u c
-
-instance Recursive (AST v u c) where
-  project = (\case Universe u -> UniverseF u
-                   Constant c -> ConstantF c
-                   Embed e    -> EmbedF e
-                   Pi v vT bT -> PiF v vT bT
-                   Lam v b    -> LamF v b
-                   Ref v      -> RefF v
-                   tm ::: ty  -> tm :.:.: ty
-                   el :@: tm  -> el :.@.: tm)
 
 lam :: Name -> AST (Succ n) v u c Term -> AST n v u c Term
 lam var = Lam (Named var (Bound ()))
