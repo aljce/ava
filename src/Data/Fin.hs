@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
@@ -5,30 +6,66 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
-module Data.Fin where
+module Data.Fin
+  ( Fin
+  , fzero
+  , fsucc
+  , finToInt
+  , bound
+  , elimFin
+  , finZeroAbsurd
+  , finZeroElim
+  , weaken
+  , weakenN
+  , strengthen
+  , shift
+  , last
+  , natToFin
+  , intToFin
+  ) where
 
-import Data.Kind (Type)
+import Prelude hiding (last)
 import Data.Void (Void,absurd)
+import Data.Maybe (fromMaybe)
 
 import Data.Singletons (SingI(..))
-import Data.Singletons.Prelude (Sing(..),PNum(..),SNum(..),SOrd(..))
-import Data.Singletons.Prelude.Enum (SEnum(..))
+import Data.Singletons.Prelude (Sing(..),PNum(..),SOrd(..))
 import Data.Nat (Nat(..),slit,natToInt)
 
 import Unsafe.Coerce (unsafeCoerce)
 
-data Fin :: Nat -> Type where
-  Fin :: Sing n -> !Int -> Fin n
+newtype Fin (n :: Nat) = Fin Int
+  deriving (Eq,Ord)
 
-instance Eq (Fin n) where
-  (Fin _ x) == (Fin _ y) = x == y
+instance SingI n => Enum (Fin (Succ n)) where
+  succ (Fin i)
+    | i < 1 + natToInt (sing @_ @n) = Fin (i + 1)
+    | otherwise = error "Prelude.Enum.Fin.succ: bad argument"
+  pred (Fin _)
+    | otherwise = error "Prelude.Enum.Fin.pred: bad argument"
+  toEnum i = fromMaybe (error "Prelude.Enum.Fin.toEnum: bad argument") (intToFin i sing)
+  fromEnum = finToInt
 
-instance Ord (Fin n) where
-  compare (Fin _ x) (Fin _ y) = compare x y
+instance SingI n => Bounded (Fin (Succ n)) where
+  minBound = fzero
+  maxBound = last
 
 instance Show (Fin n) where
-  show (Fin _ i) = show i
+  show (Fin i) = show i
+
+fzero :: Fin (Succ n)
+fzero = Fin 0
+
+fsucc :: Fin n -> Fin (Succ n)
+fsucc (Fin i) = Fin (1 + i)
+
+finToInt :: Fin n -> Int
+finToInt (Fin i) = i
+
+bound :: SingI n => Fin n -> Sing n
+bound _ = sing
 
 elimFin
   :: forall p n
@@ -36,17 +73,11 @@ elimFin
   -> (forall m. Fin m -> p m -> p (Succ m))
   -> Fin n
   -> p n
-elimFin z s (Fin n f) = go f
+elimFin z s (Fin f) = go f
   where
     go :: Int -> p n
     go 0 = unsafeCoerce z
-    go i = unsafeCoerce (s (Fin n i) (go i))
-
-finToInt :: Fin n -> Int
-finToInt (Fin _ i) = i
-
-bound :: Fin n -> Sing n
-bound (Fin n _) = n
+    go i = unsafeCoerce (s (Fin i) (go (i - 1)))
 
 finZeroAbsurd :: Fin Zero -> Void
 finZeroAbsurd _ = error "Data.Fin.finZAbsurd: Fin Zero is uninhabited"
@@ -55,31 +86,28 @@ finZeroElim :: Fin Zero -> a
 finZeroElim = absurd . finZeroAbsurd
 
 weaken :: Fin n -> Fin (Succ n)
-weaken (Fin n i) = Fin (sSucc n) i
+weaken (Fin i) = Fin i
 
-weakenN :: Sing n -> Fin m -> Fin (n :+ m)
-weakenN n (Fin m i) = Fin (n %:+ m) i
+weakenN :: forall n m. Fin m -> Fin (n :+ m)
+weakenN (Fin i) = Fin i
 
-strengthen :: Fin (Succ n) -> Maybe (Fin n)
-strengthen (Fin n i) = case n %:<= slit @1 of
+strengthen :: forall n. SingI n => Fin (Succ n) -> Maybe (Fin n)
+strengthen (Fin i) = case sing @_ @n %:<= slit @1 of
   STrue -> Nothing
-  SFalse -> Just (Fin (sPred n) i)
+  SFalse -> Just (Fin i)
 
 shift :: Sing n -> Fin m -> Fin (n :+ m)
-shift n (Fin m i) = Fin (n %:+ m) (natToInt n + i)
+shift n (Fin i) = Fin (natToInt n + i)
 
 last :: forall n. SingI n => Fin (Succ n)
-last = Fin (sSucc n) (natToInt n)
-  where
-    n :: Sing n
-    n = sing
+last = Fin (natToInt (sing @_ @n))
 
 natToFin :: Sing (n :: Nat) -> Sing m -> Maybe (Fin (Succ m))
 natToFin n m = case n %:<= m of
-  STrue -> Just (Fin (sSucc m) (natToInt n))
+  STrue -> Just (Fin (natToInt n))
   SFalse -> Nothing
 
 intToFin :: Int -> Sing n -> Maybe (Fin (Succ n))
 intToFin i n
-  | 0 <= i && i < natToInt n = Just (Fin (sSucc n) i)
+  | 0 <= i && i <= natToInt n = Just (Fin i)
   | otherwise = Nothing

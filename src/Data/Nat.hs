@@ -9,8 +9,17 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
-module Data.Nat (type Nat(..),Sing(SNat),elimNat,slit,natToInt) where
+module Data.Nat
+  ( type Nat(..)
+  , Sing(SNat)
+  , zero
+  , succ
+  , slit
+  , natToInt
+  , elimNat
+  ) where
 
+import Prelude hiding (succ)
 import Data.Kind (Type)
 import Data.Proxy (Proxy(..))
 import qualified GHC.TypeLits as GHC
@@ -176,6 +185,18 @@ instance SOrd Nat where
   sMax (SNat n) (SNat m) = SNat (max n m)
   sMin (SNat n) (SNat m) = SNat (min n m)
 
+zero :: Sing Zero
+zero = SNat 0
+
+succ :: Sing n -> Sing (Succ n)
+succ (SNat i) = SNat (1 + i)
+
+slit :: forall n. SingI (FromKnownNat n) => Sing (FromKnownNat n)
+slit = sing
+
+natToInt :: Sing (n :: Nat) -> Int
+natToInt (SNat i) = i
+
 elimNat
   :: forall p n
   .  p Zero
@@ -186,8 +207,3 @@ elimNat z s (SNat i)
   | i == 0 = unsafeCoerce z
   | otherwise = unsafeCoerce (s (elimNat z s (SNat (i - 1))))
 
-slit :: forall n. SingI (FromKnownNat n) => Sing (FromKnownNat n)
-slit = sing
-
-natToInt :: Sing (n :: Nat) -> Int
-natToInt (SNat i) = i
