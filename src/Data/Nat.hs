@@ -1,20 +1,27 @@
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
-module Data.Nat where
+module Data.Nat (type Nat(..),Sing(SNat),elimNat,slit,natToInt) where
 
+import Data.Kind (Type)
 import Data.Proxy (Proxy(..))
 import qualified GHC.TypeLits as GHC
+import Data.Type.Equality (TestEquality(..),(:~:)(..))
+import Data.Type.Coercion (TestCoercion(..),repr)
 import Data.Singletons (SingI(..),SingKind(..),SomeSing(..),Apply)
 import Data.Singletons.Prelude
   (Sing(..),PNum(..),SNum(..),FromIntegerSym0,PEq(..),SEq(..),POrd(..),SOrd(..))
+import qualified Data.Singletons.Prelude.Enum as E
 import Data.Singletons.TypeLits (withKnownNat)
+import Data.Singletons.Decide (SDecide(..),Decision(..))
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -43,6 +50,15 @@ instance PNum Nat where
   type Signum Zero = Zero
   type Signum (Succ _) = Succ Zero
   type FromInteger n = FromKnownNat n
+
+instance E.PEnum Nat where
+  type Succ n = Succ n
+  type Pred Zero = Zero
+  type Pred (Succ n) = n
+  type ToEnum n = FromKnownNat n
+  type FromEnum n = ToKnownNat n
+  type EnumFromTo n m = GHC.TypeError (GHC.Text "")
+  type EnumFromThenTo step n m = GHC.TypeError (GHC.Text "")
 
 instance PEq Nat where
   type Zero :== Zero = True
@@ -87,6 +103,14 @@ data instance Sing (n :: Nat) = SNat Int
 instance Show (Sing (n :: Nat)) where
   showsPrec p (SNat i) = showsPrec p i
 
+instance TestCoercion (Sing :: Nat -> Type) where
+  testCoercion n m = fmap repr (testEquality n m)
+
+instance SDecide Nat where
+  (SNat n) %~ (SNat m)
+    | n == m = Proved (unsafeCoerce Refl)
+    | otherwise = Disproved (\Refl -> error "Data.Singletons.SDecide Nat: Int equality failed.")
+
 instance SingI Zero where
   sing = SNat 0
 
@@ -112,6 +136,17 @@ instance SNum Nat where
     where
       nat :: GHC.KnownNat n => Sing (FromKnownNat n)
       nat = SNat (fromInteger (GHC.natVal (Proxy @n)))
+
+instance E.SEnum Nat where
+  sSucc (SNat i) = SNat (1 + i)
+  sPred (SNat i)
+    | i == 0 = SNat 0
+    | otherwise = SNat (i - 1)
+  sToEnum = sFromInteger
+  sFromEnum (SNat i) = case toSing (fromIntegral i) :: SomeSing GHC.Nat of
+    SomeSing n -> unsafeCoerce n
+  sEnumFromTo = undefined
+  sEnumFromThenTo = undefined
 
 instance SEq Nat where
   (SNat n) %:== (SNat m)
@@ -151,3 +186,8 @@ elimNat z s (SNat i)
   | i == 0 = unsafeCoerce z
   | otherwise = unsafeCoerce (s (elimNat z s (SNat (i - 1))))
 
+slit :: forall n. SingI (FromKnownNat n) => Sing (FromKnownNat n)
+slit = sing
+
+natToInt :: Sing (n :: Nat) -> Int
+natToInt (SNat i) = i
