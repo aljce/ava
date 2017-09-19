@@ -24,7 +24,7 @@ newtype LTE (n :: Nat) (m :: Nat) = LTE Int
 
 instance Category LTE where
   id = LTE 0
-  (LTE ab) . (LTE bc) = LTE (ab + bc)
+  (LTE bc) . (LTE ab) = LTE (bc + ab)
 
 lteToInt :: LTE n m -> Int
 lteToInt (LTE nm) = nm
