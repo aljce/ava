@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -107,7 +108,7 @@ instance POrd Nat where
   type Min _ Zero = Zero
   type Min (Succ n) (Succ m) = Succ (Min n m)
 
-data instance Sing (n :: Nat) = SNat Int
+newtype instance Sing (n :: Nat) = SNat Int
 
 instance Show (Sing (n :: Nat)) where
   showsPrec p (SNat i) = showsPrec p i
@@ -206,4 +207,3 @@ elimNat
 elimNat z s (SNat i)
   | i == 0 = unsafeCoerce z
   | otherwise = unsafeCoerce (s (elimNat z s (SNat (i - 1))))
-

@@ -19,8 +19,10 @@ module Data.Fin
   , finZeroElim
   , weaken
   , weakenN
+  , weakenLTE
   , strengthen
   , shift
+  , shiftLTE
   , last
   , natToFin
   , intToFin
@@ -33,6 +35,7 @@ import Data.Maybe (fromMaybe)
 import Data.Singletons (SingI(..))
 import Data.Singletons.Prelude (Sing(..),PNum(..),SOrd(..))
 import Data.Nat (Nat(..),slit,natToInt)
+import Data.Nat.LTE (LTE,lteToInt)
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -91,6 +94,9 @@ weaken (Fin i) = Fin i
 weakenN :: forall n m. Fin m -> Fin (n :+ m)
 weakenN (Fin i) = Fin i
 
+weakenLTE :: forall n m. LTE n m -> Fin n -> Fin m
+weakenLTE _ (Fin i) = Fin i
+
 strengthen :: forall n. SingI n => Fin (Succ n) -> Maybe (Fin n)
 strengthen (Fin i) = case sing @_ @n %:<= slit @1 of
   STrue -> Nothing
@@ -98,6 +104,9 @@ strengthen (Fin i) = case sing @_ @n %:<= slit @1 of
 
 shift :: Sing n -> Fin m -> Fin (n :+ m)
 shift n (Fin i) = Fin (natToInt n + i)
+
+shiftLTE :: LTE n m -> Fin n -> Fin m
+shiftLTE lte (Fin i) = Fin (lteToInt lte + i)
 
 last :: forall n. SingI n => Fin (Succ n)
 last = Fin (natToInt (sing @_ @n))

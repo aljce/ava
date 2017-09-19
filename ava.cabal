@@ -14,11 +14,14 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Language.Ava
                      , Data.Nat
+                     , Data.Nat.Properties
+                     , Data.Nat.LTE
                      , Data.Fin
   build-depends:       base >=4.9 && <5
                      , flow == 1.0.*
                      , text == 1.2.*
                      , text-show == 3.6.*
+                     , ansi-wl-pprint == 0.6.*
                      , lens == 4.15.*
                      , singletons == 2.3.*
   hs-source-dirs:      src
