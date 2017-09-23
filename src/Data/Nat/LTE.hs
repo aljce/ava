@@ -21,6 +21,7 @@ import Data.Singletons.Prelude (Sing(..),PNum(..),POrd(..),SOrd(..))
 import Data.Nat (Nat,slit,natToInt)
 
 newtype LTE (n :: Nat) (m :: Nat) = LTE Int
+  deriving Show
 
 instance Category LTE where
   id = LTE 0
