@@ -13,7 +13,7 @@
 {-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
 module Language.Ava where
 
-import Prelude hiding (pi,id,(.))
+import Prelude hiding (pi,id,(.),succ)
 import Data.Kind (Type)
 import Data.String (IsString(..))
 import Flow ((.>),(|>))
@@ -24,13 +24,14 @@ import qualified Data.Text.Lazy.Builder as LT
 import TextShow (TextShow(..))
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Type.Equality ((:~:)(..))
-import Data.Singletons (SingI)
+import Data.Singletons (Sing(..),SingI(..),withSingI)
 import Data.Singletons.TH (genSingletons)
 import Data.Singletons.Prelude (PNum(..),POrd(..))
+import Data.Singletons.Decide (Decision(..),(%~))
 
-import Data.Nat (Nat(..))
+import Data.Nat (Nat(..),succ)
 import Data.Nat.Properties (plusSuccRightSucc)
-import Data.Nat.LTE (LTE,lteI,lsucc)
+import Data.Nat.LTE (LTE,lteI,lsucc,lteN)
 import Data.Fin (Fin,fzero,fsucc)
 import Data.Fin.Internal (Fin(..)) -- TODO: Do not abuse unsafe internals
 
@@ -58,6 +59,10 @@ data Binding
 type family BindingLevel (b :: Binding) (n :: Nat) :: Nat where
   BindingLevel Ignore n = n
   BindingLevel Remember n = Succ n
+
+bindingLevel :: Bind b v -> Sing n -> Sing (BindingLevel b n)
+bindingLevel Irrelevant n = n
+bindingLevel (Bind _) n = succ n
 
 data Bind :: Binding -> Type -> Type where
   Irrelevant :: Bind Ignore v
@@ -90,6 +95,9 @@ data AST :: Type -> Type -> Type -> Cat -> Nat -> Type where
   (:@:)    :: AST v u c Elim n -> AST v u c Term n -> AST v u c Elim n
 
 deriving instance (Show v, Show u, Show c) => Show (AST v u c k n)
+
+instance (Eq u, Eq c, SingI n) => Eq (AST v u c k n) where
+  (==) = alphaEq
 
 instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
   PP.Pretty (AST v u c k n) where
@@ -124,7 +132,7 @@ instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
       vparens e = PP.lparen <> (PP.vcat [ PP.nest 1 e, PP.rparen ])
 
 data ASTLen :: Type -> Type -> Type -> Cat -> Type where
-  ASTLen :: AST v u c k n -> ASTLen v u c k
+  ASTLen :: SingI n => AST v u c k n -> ASTLen v u c k
 
 data ASTCat :: Type -> Type -> Type -> Nat -> Type where
   ASTCat :: AST v u c k n -> ASTCat v u c n
@@ -157,6 +165,33 @@ infixr 0 ~>
 
 refE :: v -> Fin n -> AST v u c Term n
 refE x = Ref x .> Embed
+
+alphaEq
+  :: forall v u c k n m
+  .  (Eq u, Eq c, SingI n, SingI m)
+  => AST v u c k n
+  -> AST v u c k m -> Bool
+alphaEq e1 e2 = go sing sing e1 e2
+  where
+    go :: Sing o -> Sing p -> AST v u c kind o -> AST v u c kind p -> Bool
+    go _ _ (Universe u1) (Universe u2) = u1 == u2
+    go _ _ (Constant c1) (Constant c2) = c1 == c2
+    go o p (Lift lte1 l1) (Lift lte2 l2) =
+      go (withSingI o (lteN lte1)) (withSingI p (lteN lte2)) l1 l2
+    go o p (Embed x1) (Embed x2) = go o p x1 x2
+    go o p (Pi x1 typeX1 b1) (Pi x2 typeX2 b2) =
+      go o p typeX1 typeX2 &&
+      go (bindingLevel x1 o) (bindingLevel x2 p) b1 b2
+    go o p (Lam x1 b1) (Lam x2 b2) =
+      go (bindingLevel x1 o) (bindingLevel x2 p) b1 b2
+    go o p (Ref _ i1) (Ref _ i2) = case o %~ p of
+      Proved Refl -> i1 == i2
+      Disproved _ -> False
+    go o p (x1 ::: typeX1) (x2 ::: typeX2) =
+      go o p x1 x2 && go o p typeX1 typeX2
+    go o p (f1 :@: a1) (f2 :@: a2) =
+      go o p f1 f2 && go o p a1 a2
+    go _ _ _ _ = False
 
 lemma :: Fin (Succ m) -> Fin (Succ m) -> Maybe (Fin m)
 lemma (Fin i) (Fin j) = case i <= j of
