@@ -13,16 +13,22 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.Ava
+                     , Language.Ava.TypeCheck
+                     , Data.Nat.Internal
                      , Data.Nat
                      , Data.Nat.Properties
                      , Data.Nat.LTE
+                     , Data.Fin.Internal
                      , Data.Fin
   build-depends:       base >=4.9 && <5
                      , flow == 1.0.*
+                     , hashable == 1.2.*
+                     , unordered-containers == 0.2.*
                      , text == 1.2.*
                      , text-show == 3.6.*
                      , prettyprinter == 1.1.*
                      , lens == 4.15.*
                      , singletons == 2.3.*
+                     , mtl == 2.2.*
   hs-source-dirs:      src
   default-language:    Haskell2010

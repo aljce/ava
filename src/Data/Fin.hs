@@ -1,7 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
@@ -30,42 +28,14 @@ module Data.Fin
 
 import Prelude hiding (last)
 import Data.Void (Void,absurd)
-import Data.Maybe (fromMaybe)
 
 import Data.Singletons (SingI(..))
 import Data.Singletons.Prelude (Sing(..),PNum(..),SOrd(..))
-import Data.Nat (Nat(..),slit,natToInt)
-import Data.Nat.LTE (LTE,lteToInt)
-
 import Unsafe.Coerce (unsafeCoerce)
 
-newtype Fin (n :: Nat) = Fin Int
-  deriving (Eq,Ord)
-
-instance SingI n => Enum (Fin (Succ n)) where
-  succ (Fin i)
-    | i < 1 + natToInt (sing @_ @n) = Fin (i + 1)
-    | otherwise = error "Prelude.Enum.Fin.succ: bad argument"
-  pred (Fin _)
-    | otherwise = error "Prelude.Enum.Fin.pred: bad argument"
-  toEnum i = fromMaybe (error "Prelude.Enum.Fin.toEnum: bad argument") (intToFin i sing)
-  fromEnum = finToInt
-
-instance SingI n => Bounded (Fin (Succ n)) where
-  minBound = fzero
-  maxBound = last
-
-instance Show (Fin n) where
-  show (Fin i) = show i
-
-fzero :: Fin (Succ n)
-fzero = Fin 0
-
-fsucc :: Fin n -> Fin (Succ n)
-fsucc (Fin i) = Fin (1 + i)
-
-finToInt :: Fin n -> Int
-finToInt (Fin i) = i
+import Data.Nat (Nat(..),slit,natToInt)
+import Data.Nat.LTE (LTE,lteToInt)
+import Data.Fin.Internal (Fin(..),fzero,fsucc,last,finToInt,intToFin)
 
 bound :: SingI n => Fin n -> Sing n
 bound _ = sing
@@ -108,15 +78,7 @@ shift n (Fin i) = Fin (natToInt n + i)
 shiftLTE :: LTE n m -> Fin n -> Fin m
 shiftLTE lte (Fin i) = Fin (lteToInt lte + i)
 
-last :: forall n. SingI n => Fin (Succ n)
-last = Fin (natToInt (sing @_ @n))
-
 natToFin :: Sing (n :: Nat) -> Sing m -> Maybe (Fin (Succ m))
 natToFin n m = case n %:<= m of
   STrue -> Just (Fin (natToInt n))
   SFalse -> Nothing
-
-intToFin :: Int -> Sing n -> Maybe (Fin (Succ n))
-intToFin i n
-  | 0 <= i && i <= natToInt n = Just (Fin i)
-  | otherwise = Nothing

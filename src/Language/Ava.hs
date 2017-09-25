@@ -13,11 +13,11 @@
 {-# OPTIONS_GHC -Wall -Werror -Wno-unticked-promoted-constructors #-}
 module Language.Ava where
 
-import Prelude hiding (pi)
+import Prelude hiding (pi,id,(.))
 import Data.Kind (Type)
 import Data.String (IsString(..))
 import Flow ((.>),(|>))
-import Control.Lens.TH (makeLenses,makePrisms)
+import Control.Lens.TH (makeLenses)
 import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as LT
@@ -25,14 +25,14 @@ import TextShow (TextShow(..))
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Type.Equality ((:~:)(..))
 import Data.Singletons (SingI)
+import Data.Singletons.TH (genSingletons)
 import Data.Singletons.Prelude (PNum(..),POrd(..))
 
 import Data.Nat (Nat(..))
 import Data.Nat.Properties (plusSuccRightSucc)
-import Data.Nat.LTE (LTE,lteI)
+import Data.Nat.LTE (LTE,lteI,lsucc)
 import Data.Fin (Fin,fzero,fsucc)
-
-import Debug.Trace (trace)
+import Data.Fin.Internal (Fin(..)) -- TODO: Do not abuse unsafe internals
 
 newtype Name
   = Name { _getName :: T.Text }
@@ -50,12 +50,6 @@ instance PP.Pretty Name where
 
 instance IsString Name where
   fromString = T.pack .> Name
-
-data Var n v
-  = Bound (Fin n) v
-  | Free v
-  deriving (Eq, Ord, Show)
-makePrisms ''Var
 
 data Binding
   = Ignore
@@ -80,23 +74,25 @@ data Cat
   = Elim
   | Term
 
+$(genSingletons [''Cat])
+
 infixl 1 :::
 infixl 2 :@:
-data AST :: Nat -> Type -> Type -> Type -> Cat -> Type where
-  Universe :: u -> AST n v u c Term
-  Constant :: c -> AST n v u c Term
-  Lift     :: LTE n m -> AST n v u c k -> AST m v u c k
-  Embed    :: AST n v u c Elim -> AST n v u c Term
-  Pi       :: Bind b v -> AST n v u c Term -> AST (BindingLevel b n) v u c Term -> AST n v u c Term
-  Lam      :: Bind b v -> AST (BindingLevel b n) v u c Term -> AST n v u c Term
-  Ref      :: Var n v -> AST n v u c Elim
-  (:::)    :: AST n v u c Term -> AST n v u c Term -> AST n v u c Elim
-  (:@:)    :: AST n v u c Elim -> AST n v u c Term -> AST n v u c Elim
+data AST :: Type -> Type -> Type -> Cat -> Nat -> Type where
+  Universe :: u -> AST v u c Term n
+  Constant :: c -> AST v u c Term n
+  Lift     :: LTE n m -> AST v u c k n -> AST v u c k m
+  Embed    :: AST v u c Elim n -> AST v u c Term n
+  Pi       :: Bind b v -> AST v u c Term n -> AST v u c Term (BindingLevel b n) -> AST v u c Term n
+  Lam      :: Bind b v -> AST v u c Term (BindingLevel b n) -> AST v u c Term n
+  Ref      :: v -> Fin n -> AST v u c Elim n
+  (:::)    :: AST v u c Term n -> AST v u c Term n -> AST v u c Elim n
+  (:@:)    :: AST v u c Elim n -> AST v u c Term n -> AST v u c Elim n
 
-deriving instance (Show v, Show u, Show c) => Show (AST n v u c k)
+deriving instance (Show v, Show u, Show c) => Show (AST v u c k n)
 
 instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
-  PP.Pretty (AST n v u c s) where
+  PP.Pretty (AST v u c k n) where
   pretty = \case
     Universe u -> PP.pretty u
     Constant c -> PP.pretty c
@@ -110,17 +106,15 @@ instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
       [ PP.hcat [ PP.backslash, PP.pretty x, " -> " ]
       , PP.pretty b
       ]
-    Ref r -> case r of
-      Bound i x -> PP.hcat [ PP.pretty x, PP.pretty '@', PP.pretty (show i) ]
-      Free x -> PP.pretty x
+    Ref x i -> PP.hcat [ PP.pretty x, PP.pretty '@', PP.pretty (show i) ]
     x ::: typeX -> PP.sep [ parensWhenBinder x, PP.colon, parensWhenBinder typeX ]
     e1 :@: e2 -> parensWhenAnn e1 PP.<+> parensWhenBinder e2
     where
-      parensWhenAnn :: AST m v u c Elim -> PP.Doc a
+      parensWhenAnn :: AST v u c Elim m -> PP.Doc a
       parensWhenAnn e = case e of
         _ ::: _ -> PP.pretty e |> vparens
         _ -> PP.pretty e
-      parensWhenBinder :: AST m v u c Term -> PP.Doc a
+      parensWhenBinder :: AST v u c Term m -> PP.Doc a
       parensWhenBinder e = case e of
         Pi _ _ _ -> ps
         Lam _ _ -> ps
@@ -129,10 +123,19 @@ instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
       vparens :: PP.Doc a -> PP.Doc a
       vparens e = PP.lparen <> (PP.vcat [ PP.nest 1 e, PP.rparen ])
 
-lift :: (SingI n, SingI m, (n :<= m) ~ True) => AST n v u c k -> AST m v u c k
+data ASTLen :: Type -> Type -> Type -> Cat -> Type where
+  ASTLen :: AST v u c k n -> ASTLen v u c k
+
+data ASTCat :: Type -> Type -> Type -> Nat -> Type where
+  ASTCat :: AST v u c k n -> ASTCat v u c n
+
+data ASTAny :: Type -> Type -> Type -> Type where
+  ASTAny :: (SingI k, SingI n) => AST v u c k n -> ASTAny v u c
+
+lift :: (SingI n, SingI m, (n :<= m) ~ True) => AST v u c k n -> AST v u c k m
 lift = Lift lteI
 
-lam :: v -> AST (Succ n) v u c Term -> AST n v u c Term
+lam :: v -> AST v u c Term (Succ n) -> AST v u c Term n
 lam x = Lam (Bind x)
 
 infixr 5 :|
@@ -140,67 +143,84 @@ data Vec :: Type -> Nat -> Type where
   Nil :: Vec a Zero
   (:|) :: a -> Vec a n -> Vec a (Succ n)
 
-lams :: forall n m v u c. Vec v n -> AST (n :+ m) v u c Term -> AST m v u c Term
+lams :: forall n m v u c. Vec v n -> AST v u c Term (n :+ m) -> AST v u c Term m
 lams Nil e = e
 lams (v :| vs) e = case plusSuccRightSucc @n @m of
   Refl -> lam v (lams vs e)
 
-pi :: v -> AST n v u c Term -> AST (Succ n) v u c Term -> AST n v u c Term
+pi :: v -> AST v u c Term n -> AST v u c Term (Succ n) -> AST v u c Term n
 pi x = Pi (Bind x)
 
 infixr 0 ~>
-(~>) :: AST n v u c Term -> AST n v u c Term -> AST n v u c Term
+(~>) :: AST v u c Term n -> AST v u c Term n -> AST v u c Term n
 (~>) = Pi Irrelevant
 
-ref :: v -> Fin n -> AST n v u c Elim
-ref x i = Ref (Bound i x)
+refE :: v -> Fin n -> AST v u c Term n
+refE x = Ref x .> Embed
 
-refE :: v -> Fin n -> AST n v u c Term
-refE x = ref x .> Embed
+lemma :: Fin (Succ m) -> Fin (Succ m) -> Maybe (Fin m)
+lemma (Fin i) (Fin j) = case i <= j of
+  True -> Nothing
+  False -> Just (Fin j)
 
-lemma :: LTE (Succ n) (Succ n) -> LTE n n
-lemma = undefined
+liftVar :: AST v u c k n -> AST v u c k (Succ n)
+liftVar = \case
+  Universe u -> Universe u
+  Constant c -> Constant c
+  Lift lte l -> Lift (lsucc lte) (liftVar l)
+  Embed em -> Embed (liftVar em)
+  Pi v typeV b -> case v of
+    Irrelevant -> Pi v (liftVar typeV) (liftVar b)
+    Bind _ -> Pi v (liftVar typeV) (liftVar b)
+  Lam v b -> case v of
+    Irrelevant -> Lam v (liftVar b)
+    Bind _ -> Lam v (liftVar b)
+  Ref x i -> Ref x (fsucc i)
+  x ::: typeX -> liftVar x ::: liftVar typeX
+  f :@: a -> liftVar f :@: liftVar a
 
+-- | substitute v x typeX e ~ e[v := x ::: typeX]
 substitute
   :: forall b n v u c
   .  Bind b v
-  -> AST n v u c Term
-  -> AST (BindingLevel b n) v u c Term
-  -> AST n v u c Term
-substitute var x expr = case var of
+  -> AST v u c Term n
+  -> AST v u c Term n
+  -> AST v u c Term (BindingLevel b n)
+  -> AST v u c Term n
+substitute var sub typeSub expr = case var of
   Irrelevant -> expr
-  Bind _ -> go fzero expr
+  Bind _ -> go fzero sub typeSub expr
   where
-    go :: Fin (Succ m) -> AST (Succ m) v u c k -> AST m v u c k
-    go m e = case e of
+    go :: Fin (Succ m) -> AST v u c Term m -> AST v u c Term m -> AST v u c k (Succ m) -> AST v u c k m
+    go m x typeX e = case e of
       Universe u -> Universe u
       Constant c -> Constant c
-      Lift lte l -> undefined
-      Embed em -> Embed (go m em)
+      Lift lte l -> undefined lte l -- Lift _ _ -- (go m l)
+      Embed em -> Embed (go m x typeX em)
       Pi v typeV b -> case v of
-        Irrelevant -> Pi v (go m typeV) (go m b)
-        Bind _ -> Pi v (go m typeV) (go (fsucc m) b)
+        Irrelevant -> Pi v (go m x typeX typeV) (go m x typeX b)
+        Bind _ -> Pi v (go m x typeX typeV) (go (fsucc m) (liftVar x) (liftVar typeX) b)
       Lam v b -> case v of
-        Irrelevant -> Lam v (go m b)
-        Bind _ -> Lam v (go (fsucc m) b)
-      Ref v -> case v of
-        Bound f _ -> case m == f of
-          True -> undefined
-          False -> undefined
-        Free freeVar -> Ref (Free freeVar)
-      b ::: typeB -> go m b ::: go m typeB
-      f :@: a -> go m f :@: go m a
+        Irrelevant -> Lam v (go m x typeX b)
+        Bind _ -> Lam v (go (fsucc m) (liftVar x) (liftVar typeX) b)
+      Ref name f -> case lemma m f of
+        Nothing -> x ::: typeX
+        Just decF -> Ref name decF
+      b ::: typeB -> go m x typeX b ::: go m x typeX typeB
+      f :@: a -> go m x typeX f :@: go m x typeX a
 
-normalize :: AST n v u c k -> AST n v u c k
-normalize e = case e of
-  f :@: a -> case trace "f" (normalize f) of
-    l ::: typeL -> case normalize l of
-      Lam var b -> case normalize typeL of
-        Pi typeVar _ typeB -> normalize (substitute var a b) ::: normalize (substitute typeVar a typeB)
-        _ -> e
-      _ -> e
-    _ -> e
-  _ -> e
+-- normalize :: AST n v u c k -> AST n v u c k
+-- normalize e = case e of
+--   f :@: a -> case normalize f of
+--     l ::: typeL -> case normalize l of
+--       Lam var b -> case normalize typeL of
+--         Pi typeVar _ typeB ->
+--           normalize (substitute var a b) :::
+--           normalize (substitute typeVar a typeB)
+--         _ -> e
+--       _ -> e
+--     _ -> e
+--   _ -> e
 
 data Star
   = Star
@@ -212,7 +232,7 @@ instance TextShow Star where
 instance PP.Pretty Star where
   pretty Star = "*"
 
-star :: AST n v Star c Term
+star :: AST v Star c Term n
 star = Universe Star
 
 data Base
@@ -230,22 +250,22 @@ instance PP.Pretty Base where
     IntT -> "Int"
     IntV i -> PP.pretty i
 
-iComb :: AST Zero Name Star c Elim
+iComb :: AST Name Star c Elim Zero
 iComb = expr ::: typ
   where
-    expr :: AST Zero Name Star c Term
+    expr :: AST Name Star c Term Zero
     expr = lam "a" $ lam "x" $ refE "x" fzero
-    typ :: AST Zero Name Star c Term
+    typ :: AST Name Star c Term Zero
     typ = pi "a" star $ refE "a" fzero ~> refE "a" fzero
 
-kComb :: AST Zero Name Star c Elim
+kComb :: AST Name Star c Elim Zero
 kComb = expr ::: typ
   where
-    expr :: AST Zero Name Star c Term
+    expr :: AST Name Star c Term Zero
     expr =
       lams ("a" :| "b" :| "x" :| "y" :| Nil) $
       refE "x" (fsucc fzero)
-    typ :: AST Zero Name Star c Term
+    typ :: AST Name Star c Term Zero
     typ =
       pi "a" star $
       pi "b" star $
@@ -253,17 +273,17 @@ kComb = expr ::: typ
       refE "b" fzero ~>
       refE "a" (fsucc fzero)
 
-sComb :: AST Zero Name Star c Elim
+sComb :: AST Name Star c Elim Zero
 sComb = expr ::: typ
   where
-    expr :: AST Zero Name Star c Term
+    expr :: AST Name Star c Term Zero
     expr =
       lams ("a" :| "b" :| "c" :| "x" :| "y" :| "z" :| Nil) $
       Embed $
-      ref "x" two :@:
+      Ref "x" two :@:
       refE "z" fzero :@:
-      Embed (ref "y" (fsucc fzero) :@: refE "z" fzero)
-    typ :: AST Zero Name Star c Term
+      Embed (Ref "y" (fsucc fzero) :@: refE "z" fzero)
+    typ :: AST Name Star c Term Zero
     typ =
       pi "a" star $
       pi "b" star $
@@ -274,33 +294,33 @@ sComb = expr ::: typ
     two :: Fin (Succ (Succ (Succ n)))
     two = fsucc (fsucc fzero)
 
-skk :: AST Zero Name Star c Elim
+skk :: AST Name Star c Elim Zero
 skk = expr ::: typ
   where
-    expr :: AST Zero Name Star c Term
+    expr :: AST Name Star c Term Zero
     expr =
       lam "a" $ Embed $
       lift sComb :@: a :@: a :@: a :@:
       Embed (lift kComb :@: a :@: a) :@:
       Embed (lift iComb :@: a)
       where
-        a :: AST (Succ Zero) Name Star c Term
+        a :: AST Name Star c Term (Succ Zero) 
         a = refE "a" fzero
-    typ :: AST Zero Name Star c Term
+    typ :: AST Name Star c Term Zero
     typ = pi "a" star $ refE "a" fzero ~> refE "a" fzero
 
-test :: AST n Name Star Base s -> IO ()
+test :: AST Name Star Base s n -> IO ()
 test = PP.pretty .> print
 
-normTest :: String -> AST n Name Star Base s -> IO ()
-normTest name e = do
-  putStrLn (name ++ " before normalization:")
-  test e
-  putStrLn (name ++ " after normalization:")
-  test (normalize e)
+-- normTest :: String -> AST n Name Star Base s -> IO ()
+-- normTest name e = do
+--   putStrLn (name ++ " before normalization:")
+--   test e
+--   putStrLn (name ++ " after normalization:")
+--   test (normalize e)
 
-tests :: IO ()
-tests = do
-  normTest "Identity function" iComb
-  normTest "Identity function on Ints" (iComb :@: Constant IntT)
-  normTest "Zero" (iComb :@: Constant IntT :@: Constant (IntV 0))
+-- tests :: IO ()
+-- tests = do
+--   normTest "Identity function" iComb
+--   normTest "Identity function on Ints" (iComb :@: Constant IntT)
+--   normTest "Zero" (iComb :@: Constant IntT :@: Constant (IntV 0))
