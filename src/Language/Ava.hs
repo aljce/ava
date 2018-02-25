@@ -134,6 +134,8 @@ instance (PP.Pretty v, PP.Pretty u, PP.Pretty c) =>
 data ASTLen :: Type -> Type -> Type -> Cat -> Type where
   ASTLen :: SingI n => AST v u c k n -> ASTLen v u c k
 
+deriving instance (Show v, Show u, Show c) => Show (ASTLen v u c k)
+
 data ASTCat :: Type -> Type -> Type -> Nat -> Type where
   ASTCat :: AST v u c k n -> ASTCat v u c n
 
@@ -259,7 +261,7 @@ substitute var sub typeSub expr = case var of
 
 data Star
   = Star
-  deriving Show
+  deriving (Eq, Show)
 
 instance TextShow Star where
   showb _ = "*"
@@ -273,7 +275,7 @@ star = Universe Star
 data Base
   = IntT
   | IntV Int
-  deriving Show
+  deriving (Eq, Show)
 
 instance TextShow Base where
   showb = \case
